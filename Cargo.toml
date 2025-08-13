@@ -1,0 +1,16 @@
+[package]
+name = "authoritative_server"
+version = "0.1.0"
+edition = "2024"
+default-run = "authoritative_server"
+
+[dependencies]
+bevy = "0.16.1"
+bevy_simplenet = "0.16.0"
+futures-util = "0.3.31"
+tokio = { version = "1.47.1", features = ["full"] }
+tokio-tungstenite = "0.27.0"
+
+[[bin]]
+name = "test"
+path = "src/bin/test.rs"
