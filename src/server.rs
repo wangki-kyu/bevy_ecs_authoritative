@@ -42,10 +42,10 @@ struct WebSocketAcceptEvent(Receiver<ClientEventMessage>);  // Websocket으로 �
 
 // ----------------- system
 fn setup_server(mut commands: Commands, tokio_runtime: Res<TokioRuntime>) {
-    // websocket server를 열어줘야함..
+    // websocket server Message channel
     let (tx, rx) = tokio::sync::mpsc::channel::<ClientEventMessage>(10);
 
-    //
+    // resource 추가 
     commands.insert_resource(WebSocketAcceptEvent(rx));
 
     let handle = tokio_runtime.0.clone();
