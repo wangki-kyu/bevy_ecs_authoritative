@@ -1,5 +1,7 @@
-use futures_util::{stream::{SplitSink, SplitStream}, SinkExt, StreamExt};
-use tokio::net::TcpStream;
+use std::sync::mpsc::channel;
+
+use futures_util::{stream::{SplitSink, SplitStream}, task, SinkExt, StreamExt, TryStreamExt};
+use tokio::{net::TcpStream, sync::mpsc::Sender};
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use bevy::{input::{keyboard::KeyboardInput, ButtonState}, prelude::*};
 
@@ -17,33 +19,104 @@ struct ConnectedWebsocket {
     stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
 }
 
+#[derive(Resource)]
+struct WebsocketChannelSender(Sender<String>);
+
 #[derive(Event)]
-struct SendEvent;
+struct SendEvent(MoveDirection);
+
+enum MoveDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl MoveDirection {
+    fn to_string(&self) -> String {
+        match self {
+            MoveDirection::Up => "up".to_string(),
+            MoveDirection::Down => "down".to_string(),
+            MoveDirection::Left => "left".to_string(),
+            MoveDirection::Right => "right".to_string(),
+        }
+    }
+}
 
 fn main() {
-    // 처음에 시작 시 연결을 해주면 되는거아님? 
-
+    // -------- tokio runtime 생성
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let (mut sink, stream) = runtime.handle().block_on(async move {
+    // -------- websocket connect task 생성..
+    let sender = runtime.handle().block_on(async move {
         connect_websocket().await
     });
 
+    // -------- bevy App initialize
     App::new()
         .add_plugins(DefaultPlugins)
         .add_event::<SendEvent>()
         .insert_resource(TokioRuntimeHandle(runtime.handle().clone()))
-        .insert_resource(ConnectedWebsocket{
-            sink,
-            stream,
-        })
-        .add_systems(Update, keyboard_input_system)
+        .insert_resource(WebsocketChannelSender(sender))
+        .add_systems(Update, (
+            keyboard_input_system,
+            send_event_system,
+            )
+        )
         .run();
 }
 
-async fn connect_websocket() -> (SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>, SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>) {
+
+/// 어플리케이션 실행 시 WebSocket 연결 함수
+/// stream, sink를 처리하는 task를 각각 생성한다.
+/// Sender<String>을 반환하여 Bevy의 resource로 만들어 Bevy App에서 사용하도록 하였음. 
+/// 
+async fn connect_websocket() -> tokio::sync::mpsc::Sender<String> {
+    println!("waiting for connecting to server!");
     let (stream, res) = tokio_tungstenite::connect_async("ws://127.0.0.1:9003").await.unwrap();
-    let (mut sink, ws_stream) = stream.split();        
-    (sink, ws_stream)
+    let (mut sink, ws_stream) = stream.split();   
+
+    let (sender, mut receiver) = tokio::sync::mpsc::channel::<String>(10);
+
+    // start websocket stream receive task 
+    let sender_clone = sender.clone();
+    tokio::spawn(async move {
+        handle_websocket_stream(ws_stream, sender_clone).await;
+    });
+
+    // start websocket sink sender task
+    tokio::spawn(async move {
+        handle_websocket_sink(sink, receiver).await;
+    });
+
+    sender
+}
+
+// websocket 받기
+// todo: websocket으로 받은 내용을 bevy에게 전달하는 로직이 필요함, 아직 구현되어있지 않음
+async fn handle_websocket_stream(stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>, sender: tokio::sync::mpsc::Sender<String>) {
+    // websocket stream으로 받은 데이터를 처리하는 hander 
+    let future_stream = stream.try_for_each(|msg| {
+        futures_util::future::ok(())
+    });
+
+    let _ = future_stream.await;
+}
+
+/// websocket 보내기
+/// sink를 통해서 연결된 websocket server로 데이터를 보내는 handler 함수
+/// 
+async fn handle_websocket_sink(mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>, mut receiver: tokio::sync::mpsc::Receiver<String>) {
+    // mpsc receiver를 통해서 받은 데이터를 websocker sink로 보내는 handler 
+    match receiver.recv().await {
+        Some(msg) => {
+            // msg의 헤더에 따라서 
+            // 보내는 데이터가 달라진다.
+            let _ = sink.send(Message::text(msg)).await;
+        },
+        None => {
+
+        },
+    }
 }
 
 fn setup_client_websocket(mut commands: Commands) {
@@ -55,15 +128,52 @@ fn keyboard_input_system(mut keyboard_events: EventReader<KeyboardInput>, mut se
     for event in keyboard_events.read() {
         if event.state == ButtonState::Pressed {
             println!("Key {:?} was pressed!", event.key_code);
-            send_event.write(SendEvent);
+
+            // ------- key_code convert to move_direction 
+            let move_direction = match event.key_code {
+                KeyCode::ArrowUp => {
+                    Some(MoveDirection::Up)
+                },
+                KeyCode::ArrowDown => {
+                    Some(MoveDirection::Down)
+                },
+                KeyCode::ArrowLeft => {
+                    Some(MoveDirection::Left)
+                },
+                KeyCode::ArrowRight => {
+                    Some(MoveDirection::Right)
+                },
+                _ => {
+                    None
+                }
+            };
+
+            if let Some(direction) = move_direction {
+                send_event.write(SendEvent(direction));    
+            }
         }
     }
 }
 
-fn send_event_system(mut send_event: EventReader<SendEvent>, client_res: Res<ConnectedWebsocket>, handle: Res<TokioRuntimeHandle>) {    
+/// 키보드 input event receiver handler system
+/// tokio runtime handle을 이용하여 send task를 생성해 준다. 
+/// 미리 생성해둔 resouce인 WebSocketChannelSender로 보내주면 됨.
+fn send_event_system(mut send_event: EventReader<SendEvent>, websocket_sender: Res<WebsocketChannelSender>, handle: Res<TokioRuntimeHandle>) {    
     for event in send_event.read() {
         // event 발생 시 websocket을 통해서 server로 보내준다.
         // handle을 이용해줘야하는 듯? 
-        client_res.sink.send()
+        let directino_str = event.0.to_string();
+        let sender_clone = websocket_sender.0.clone();
+        handle.0.spawn(async move {
+            // msg 생성 필요
+            // up, down, left, right 
+            match sender_clone.send(directino_str).await {
+                Ok(_) => todo!(),
+                Err(e) => {
+                    eprintln!("[send_event_system] fail to send, error: {}", e);
+                },
+            };
+        });
     }
 }
+
