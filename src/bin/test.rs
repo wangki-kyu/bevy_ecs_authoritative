@@ -73,6 +73,9 @@ fn main() {
 async fn connect_websocket() -> tokio::sync::mpsc::Sender<String> {
     println!("waiting for connecting to server!");
     let (stream, res) = tokio_tungstenite::connect_async("ws://127.0.0.1:9003").await.unwrap();
+
+    println!("websocket connect success!!");
+
     let (mut sink, ws_stream) = stream.split();   
 
     let (sender, mut receiver) = tokio::sync::mpsc::channel::<String>(10);
@@ -80,11 +83,13 @@ async fn connect_websocket() -> tokio::sync::mpsc::Sender<String> {
     // start websocket stream receive task 
     let sender_clone = sender.clone();
     tokio::spawn(async move {
+        println!("[Start] WebSocket Stream");
         handle_websocket_stream(ws_stream, sender_clone).await;
     });
 
     // start websocket sink sender task
     tokio::spawn(async move {
+        println!("[Start] WebSocket Sink");
         handle_websocket_sink(sink, receiver).await;
     });
 
@@ -107,15 +112,18 @@ async fn handle_websocket_stream(stream: SplitStream<WebSocketStream<MaybeTlsStr
 /// 
 async fn handle_websocket_sink(mut sink: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>, mut receiver: tokio::sync::mpsc::Receiver<String>) {
     // mpsc receiver를 통해서 받은 데이터를 websocker sink로 보내는 handler 
-    match receiver.recv().await {
-        Some(msg) => {
-            // msg의 헤더에 따라서 
-            // 보내는 데이터가 달라진다.
-            let _ = sink.send(Message::text(msg)).await;
-        },
-        None => {
-
-        },
+    loop {
+        match receiver.recv().await {
+            Some(msg) => {
+                // msg의 헤더에 따라서 
+                // 보내는 데이터가 달라진다.
+                println!("msg: {}", msg);
+                let _ = sink.send(Message::text(msg)).await;
+            },
+            None => {
+    
+            },
+        }
     }
 }
 
@@ -168,7 +176,9 @@ fn send_event_system(mut send_event: EventReader<SendEvent>, websocket_sender: R
             // msg 생성 필요
             // up, down, left, right 
             match sender_clone.send(directino_str).await {
-                Ok(_) => todo!(),
+                Ok(_) => {
+                    println!("send success!!");
+                },
                 Err(e) => {
                     eprintln!("[send_event_system] fail to send, error: {}", e);
                 },
