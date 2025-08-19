@@ -8,9 +8,11 @@ pub fn run_server() {
     App::new()
         .add_plugins(MinimalPlugins)
         .insert_resource(TokioRuntime(runtime.handle().clone()))
+        .add_event::<ClientMoveEvent>()
         .add_systems(Startup, setup_server)
         .add_systems(Update, (
             clinet_event_receive_system,
+            client_move_event_system
         ))
         .run();
 }
@@ -53,6 +55,12 @@ struct TokioRuntime(tokio::runtime::Handle);
 #[derive(Resource)]
 struct WebSocketAcceptEvent(Receiver<ClientEventMessage>);  // Websocket으로 받아온 데이터를 처리해야함..
 
+
+// ----------------- event
+#[derive(Event)]
+struct ClientMoveEvent;
+
+
 // ----------------- system
 fn setup_server(mut commands: Commands, tokio_runtime: Res<TokioRuntime>) {
     // websocket server Message channel
@@ -68,7 +76,7 @@ fn setup_server(mut commands: Commands, tokio_runtime: Res<TokioRuntime>) {
     });
 }
 
-fn clinet_event_receive_system(mut recv: ResMut<WebSocketAcceptEvent>) {
+fn clinet_event_receive_system(mut recv: ResMut<WebSocketAcceptEvent>, mut client_move_event: EventWriter<ClientMoveEvent>) {
     match recv.0.try_recv() {
         Ok(msg) => {
             match msg {
@@ -77,6 +85,8 @@ fn clinet_event_receive_system(mut recv: ResMut<WebSocketAcceptEvent>) {
                 },
                 ClientEventMessage::Move(move_direction) => {
                     // todo here ...
+                    // client move event 발생!
+                    // event를 발생시켜서 위치를 변경시키는 작업을 하면 좋을 것 같음. 
                     match move_direction {
                         MoveDirection::Up => println!("up"),
                         MoveDirection::Down => println!("down"),
@@ -84,12 +94,21 @@ fn clinet_event_receive_system(mut recv: ResMut<WebSocketAcceptEvent>) {
                         MoveDirection::Right => println!("right"),
                         MoveDirection::None => print!("none"),
                     }
+
+                    // client move event write!
+                    client_move_event.write(ClientMoveEvent);
                 },
             }
         },
         Err(_) => {
 
         },
+    }
+}
+
+fn client_move_event_system(mut client_move_event: EventReader<ClientMoveEvent>) {
+    for _ in client_move_event.read() {
+        println!("move event occur!");
     }
 }
 

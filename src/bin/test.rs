@@ -3,7 +3,7 @@ use std::sync::mpsc::channel;
 use futures_util::{stream::{SplitSink, SplitStream}, task, SinkExt, StreamExt, TryStreamExt};
 use tokio::{net::TcpStream, sync::mpsc::Sender};
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use bevy::{input::{keyboard::KeyboardInput, ButtonState}, prelude::*};
+use bevy::{color::palettes::css::RED, input::{keyboard::KeyboardInput, ButtonState}, prelude::*};
 
 #[derive(Resource)]
 struct TokioRuntimeHandle(tokio::runtime::Handle);
@@ -43,6 +43,9 @@ impl MoveDirection {
     }
 }
 
+#[derive(Component)]
+struct Ball;
+
 fn main() {
     // -------- tokio runtime 생성
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -57,6 +60,7 @@ fn main() {
         .add_event::<SendEvent>()
         .insert_resource(TokioRuntimeHandle(runtime.handle().clone()))
         .insert_resource(WebsocketChannelSender(sender))
+        .add_systems(Startup, setup)
         .add_systems(Update, (
             keyboard_input_system,
             send_event_system,
@@ -65,7 +69,7 @@ fn main() {
         .run();
 }
 
-
+// region: --websocket
 /// 어플리케이션 실행 시 WebSocket 연결 함수
 /// stream, sink를 처리하는 task를 각각 생성한다.
 /// Sender<String>을 반환하여 Bevy의 resource로 만들어 Bevy App에서 사용하도록 하였음. 
@@ -126,29 +130,60 @@ async fn handle_websocket_sink(mut sink: SplitSink<WebSocketStream<MaybeTlsStrea
         }
     }
 }
+// endregion: --websocket
 
-fn setup_client_websocket(mut commands: Commands) {
-    // Event도 설정해줘야함...? 
+// region: -- setup
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    // Camera setting
+    commands.spawn(Camera2d);
+
+    commands.spawn((
+        // 1. 메시 컴포넌트: 어떤 모양을 그릴지 정의
+        Mesh2d(meshes.add(Circle::new(50.0))),
+        // 2. 재질 컴포넌트: 메시의 색상, 텍스처 등을 정의
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(RED))),
+        // 3. 트랜스폼 컴포넌트: 엔티티의 위치, 회전, 크기를 정의
+        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+        Ball,
+    ));
+}
+
+// endregion: -- setup
+
+// region: -- system
+
+// Ball move system
+fn ball_move_system() {
+        
 }
 
 // keyboard input system
-fn keyboard_input_system(mut keyboard_events: EventReader<KeyboardInput>, mut send_event: EventWriter<SendEvent>) {
+fn keyboard_input_system(mut keyboard_events: EventReader<KeyboardInput>, mut send_event: EventWriter<SendEvent>, mut query: Query<&mut Transform, With<Ball>>) {
     for event in keyboard_events.read() {
         if event.state == ButtonState::Pressed {
             println!("Key {:?} was pressed!", event.key_code);
+            let mut transform = query.single_mut().unwrap();
 
             // ------- key_code convert to move_direction 
             let move_direction = match event.key_code {
                 KeyCode::ArrowUp => {
+                    transform.translation.y += 10.0;
                     Some(MoveDirection::Up)
                 },
                 KeyCode::ArrowDown => {
+                    transform.translation.y -= 10.0;
                     Some(MoveDirection::Down)
                 },
                 KeyCode::ArrowLeft => {
+                    transform.translation.x -= 10.0;
                     Some(MoveDirection::Left)
                 },
                 KeyCode::ArrowRight => {
+                    transform.translation.x += 10.0;
                     Some(MoveDirection::Right)
                 },
                 _ => {
@@ -186,4 +221,4 @@ fn send_event_system(mut send_event: EventReader<SendEvent>, websocket_sender: R
         });
     }
 }
-
+// endregion: -- system
