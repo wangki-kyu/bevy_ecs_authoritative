@@ -166,24 +166,24 @@ fn keyboard_input_system(mut keyboard_events: EventReader<KeyboardInput>, mut se
     for event in keyboard_events.read() {
         if event.state == ButtonState::Pressed {
             println!("Key {:?} was pressed!", event.key_code);
-            let mut transform = query.single_mut().unwrap();
+            // let mut transform = query.single_mut().unwrap();
 
             // ------- key_code convert to move_direction 
             let move_direction = match event.key_code {
                 KeyCode::ArrowUp => {
-                    transform.translation.y += 10.0;
+                    // transform.translation.y += 10.0;
                     Some(MoveDirection::Up)
                 },
                 KeyCode::ArrowDown => {
-                    transform.translation.y -= 10.0;
+                    // transform.translation.y -= 10.0;
                     Some(MoveDirection::Down)
                 },
                 KeyCode::ArrowLeft => {
-                    transform.translation.x -= 10.0;
+                    // transform.translation.x -= 10.0;
                     Some(MoveDirection::Left)
                 },
                 KeyCode::ArrowRight => {
-                    transform.translation.x += 10.0;
+                    // transform.translation.x += 10.0;
                     Some(MoveDirection::Right)
                 },
                 _ => {
