@@ -4,9 +4,11 @@
 ## 2025.08.25  
 `-` Fix: 서버쪽에서 클라이언트 접속 시 비동기 채널을 생성하여 데이터를 보내줄 수 있도록 수정하였음.  
     기존에 sink를 생성한 `Entity`가 가진 상태에서 보내려 했지만 소유권 이슈로 보낼 수 없어서 수정하였음.
-    
-`+` Addition: 클라이언트 `websocket stream` 기능 구현
-    서버로부터 받은 `Entity`의 `Transform`을 동기화 기능 구현
+      
+`+` Addition: 클라이언트 `websocket stream` 기능 구현  
+    서버로부터 받은 `Entity`의 `Transform`을 동기화 기능 구현  
+
+`@` Version: v0.1.2 추가 및 README 업데이트
 
 # 0.1.1-dev  
 `+` Addition: test clinet code 작성 중.  

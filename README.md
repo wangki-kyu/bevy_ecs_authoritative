@@ -1,3 +1,11 @@
 # Bevy ECS Authoritative Server
 
-# WebSocket
+# Getting Start
+## server
+> cargo run server
+
+## client
+> cargo run client
+
+
+
