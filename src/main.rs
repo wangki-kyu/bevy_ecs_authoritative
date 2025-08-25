@@ -5,6 +5,8 @@ use crate::{client::run_client, server::run_server};
 mod client;
 mod server;
 
+pub mod common;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
